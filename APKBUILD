@@ -35,7 +35,7 @@ pkgname=nginx
 pkgver=1.23.2
 pkgrel=0
 # Revision of nginx-tests to use for check().
-_tests_hgrev=29f4d48b5b31
+_tests_hgrev=1d88487eafbf
 _njs_ver=0.7.7
 pkgdesc="HTTP and reverse proxy server (quic version)"
 url="https://www.nginx.org/"
@@ -76,7 +76,7 @@ _grp_ngx="nginx"
 _grp_www="www-data"
 pkggroups="$_grp_ngx $_grp_www"
 install="$pkgname.pre-install $pkgname.post-install $pkgname.pre-upgrade $pkgname.post-upgrade"
-options="!check"
+# options="!check"
 builddir="$srcdir"/$pkgname-quic
 subpackages="$pkgname-debug $pkgname-doc $pkgname-openrc $pkgname-vim::noarch"
 source="https://nginx.org/download/nginx-$pkgver.tar.gz
@@ -468,7 +468,7 @@ getvar() {
 
 sha512sums="
 4a5413c0ec251c02fb73dfb4d351045f857a36d45ebb7ae2c29f4a4f320a6543d0a049b147b08318de0b7b0406773c329dbf43bf98bb088f76e506ea532cd8ef  nginx-1.23.2.tar.gz
-0acd8bf9aedeabeef590909c83ad9057063b4d3165fe5e0b0ff2205df6e0d1b97f3fcfd27384a55b4816bbe975e93a737e58df9c6ee01baf7e46ceaabc43c64a  nginx-tests-29f4d48b5b31.tar.gz
+18127a70ccd2e5c0d89bcfa8647db1a787a32d1e21cdfae9673cc455f94c329d22c23fb3b5f0557a8ce0472ace0c0d903970b4c01b06f316a4169c4d3a20b032  nginx-tests-1d88487eafbf.tar.gz
 d76d654e1a73dbbbf5ad4ab6ae32bb43f5ea502e2468f9f0fe9485eb78c0ee6d550c4032e3a771ac5888d2ec7c387fd4a1fefb7eb47ba2e21afd4a294780df78  nginx-njs-0.7.7.tar.gz
 4c7a94aaebbb69599b0067e74f9f3db54ec383ca9499292fec5b875bb0b5859aa11dc14cef5664c94dd54aba231f31e85feacddc49f7622aa4d0fdb38709b6e1  nginx-dav-ext-module~pr-56.patch
 fdd66e433126e194a3ef22737993191a04fcc4c8caa044b27cb22bea0e7f16c8fdbc900553507d2bb541cdb82b542845a297db2a48c2460a38dd772d0ebfca9d  nginx-dav-ext-module~pr-62.patch
