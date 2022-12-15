@@ -32,12 +32,12 @@
 pkgname=nginx
 # NOTE: Upgrade only to even-numbered versions (e.g. 1.14.z, 1.16.z)!
 # Odd-numbered versions are mainline (development) versions.
-pkgver=1.22.1
+pkgver=1.23.2
 pkgrel=0
 # Revision of nginx-tests to use for check().
 _tests_hgrev=29f4d48b5b31
 _njs_ver=0.7.7
-pkgdesc="HTTP and reverse proxy server (stable version)"
+pkgdesc="HTTP and reverse proxy server (quic version)"
 url="https://www.nginx.org/"
 arch="all"
 license="BSD-2-Clause"
@@ -50,12 +50,16 @@ makedepends="
 	libxml2-dev
 	libxslt-dev
 	linux-headers
-	openssl-dev>3
-	pcre-dev
+	pcre2-dev
 	perl-dev
 	pkgconf
 	zeromq-dev
 	zlib-dev
+	mercurial
+	git
+	autoconf
+	automake
+	libtool
 	"
 checkdepends="
 	gd
@@ -72,12 +76,21 @@ _grp_ngx="nginx"
 _grp_www="www-data"
 pkggroups="$_grp_ngx $_grp_www"
 install="$pkgname.pre-install $pkgname.post-install $pkgname.pre-upgrade $pkgname.post-upgrade"
+options="!check"
+builddir="$srcdir"/$pkgname-quic
 subpackages="$pkgname-debug $pkgname-doc $pkgname-openrc $pkgname-vim::noarch"
 source="https://nginx.org/download/nginx-$pkgver.tar.gz
 	$pkgname-tests-$_tests_hgrev.tar.gz::https://hg.nginx.org/nginx-tests/archive/$_tests_hgrev.tar.gz
 	$pkgname-njs-$_njs_ver.tar.gz::https://hg.nginx.org/njs/archive/$_njs_ver.tar.gz
 	nginx-dav-ext-module~pr-56.patch::https://github.com/arut/nginx-dav-ext-module/pull/56.patch
 	nginx-dav-ext-module~pr-62.patch::https://github.com/arut/nginx-dav-ext-module/commit/bbf93f75ca58657fb0f8376b0898f854f13cef91.patch
+	nginx-upload-progress-module~nginx_1.23.0.patch::https://github.com/masterzen/nginx-upload-progress-module/files/8980323/nginx_1.23.0.patch.txt
+	mod_zip~00-660ad95.patch::https://github.com/evanmiller/mod_zip/commit/660ad956a960703558b9368a2474e85ab7a7d1df.patch
+	mod_zip~01-bff10ba.patch::https://github.com/evanmiller/mod_zip/commit/bff10ba7314c201dec2ed8cbcf75d585ba4d433e.patch
+	mod_zip~02-51cf45d.patch::https://github.com/evanmiller/mod_zip/commit/51cf45d3e9f51e02224af017b235d1d30fbf28fb.patch
+	mod_zip~03-555d3b3.patch::https://github.com/evanmiller/mod_zip/commit/555d3b3671dbd896e8e107dea773d452e3334c65.patch
+	mod_zip~04-808fb55.patch::https://github.com/evanmiller/mod_zip/commit/808fb55e7235a201ea862e02dab612b87787d5a4.patch
+	mod_zip~05-5b2604b.patch::https://github.com/evanmiller/mod_zip/commit/5b2604b3914f87db2077f2239b8a98b66cf622af.patch
 	traffic-accounting-nginx-module~disable-stream-module.patch
 	nginx_cookie_flag_module~fix-mem-allocations.patch
 	njs~mktemp-busybox-compat.patch
@@ -93,11 +106,6 @@ source="https://nginx.org/download/nginx-$pkgver.tar.gz
 
 _modules_dir="usr/lib/$pkgname/modules"
 _stream_js_depends="$pkgname-mod-stream"
-
-case "$CARCH" in
-	riscv64) _has_luajit=false;;
-	*) _has_luajit=true; makedepends="$makedepends luajit-dev";;
-esac
 
 case "$CARCH" in
 	x86) _njs_mods= ;; # has failing tests
@@ -182,15 +190,15 @@ _http_headers_more_so="ngx_http_headers_more_filter_module.so"
 _add_module "http-log-zmq" "v1.0.0" "https://github.com/danifbento/nginx-log-zmq"
 
 # luajit is required for lua-nginx-module since v0.10.14
-_add_module "http-lua" "v0.10.22" "https://github.com/openresty/lua-nginx-module" "" "$_has_luajit"
-_http_lua_depends="$pkgname-mod-devel-kit lua-resty-core"
-_http_lua_provides="$pkgname-lua"  # for backward compatibility
+# _add_module "http-lua" "v0.10.22" "https://github.com/openresty/lua-nginx-module" "" "$_has_luajit"
+# _http_lua_depends="$pkgname-mod-devel-kit lua-resty-core"
+# _http_lua_provides="$pkgname-lua"  # for backward compatibility
 
-_add_module "http-lua-upstream" "v0.07" "https://github.com/openresty/lua-upstream-nginx-module" "" "$_has_luajit"
-_http_lua_upstream_depends="$pkgname-mod-http-lua"
+# _add_module "http-lua-upstream" "v0.07" "https://github.com/openresty/lua-upstream-nginx-module" "" "$_has_luajit"
+# _http_lua_upstream_depends="$pkgname-mod-http-lua"
 
-_add_module "http-naxsi" "1.3" "https://github.com/nbs-system/naxsi" "naxsi_src"
-_naxsi_provides="$pkgname-naxsi"  # for backward compatibility
+# _add_module "http-naxsi" "1.3" "https://github.com/nbs-system/naxsi" "naxsi_src"
+# _naxsi_provides="$pkgname-naxsi"  # for backward compatibility
 
 _add_module "http-nchan" "v1.3.4" "https://github.com/slact/nchan"
 _http_nchan_so="ngx_nchan_module.so"
@@ -225,6 +233,12 @@ _rtmp_provides="$pkgname-rtmp"  # for backward compatibility
 
 
 prepare() {
+	git clone -b v3.6.1 https://github.com/libressl-portable/portable.git "$srcdir"/libressl
+	cd "$srcdir"/libressl
+	./autogen.sh
+	hg clone --cwd "$srcdir" -b quic https://hg.nginx.org/nginx-quic
+	cp "$srcdir"/$pkgname-$pkgver/LICENSE "$builddir"/
+	
 	local file; for file in $source; do
 		file=${file%%::*}
 
@@ -250,14 +264,9 @@ prepare() {
 }
 
 _build() {
-	if $_has_luajit; then
-		export LUAJIT_LIB="$(pkgconf --variable=libdir luajit)"
-		export LUAJIT_INC="$(pkgconf --variable=includedir luajit)"
-	fi
-
 	# --without-pcre2 - Lua module is not compatible with PCRE2 yet
 	#   https://github.com/openresty/lua-nginx-module/issues/1984
-	./configure \
+	auto/configure \
 		--prefix=/var/lib/$pkgname \
 		--sbin-path=/usr/sbin/$pkgname \
 		--modules-path=/$_modules_dir \
@@ -276,10 +285,13 @@ _build() {
 		--with-threads \
 		--with-file-aio \
 		\
-		--without-pcre2 \
-		\
 		--with-http_ssl_module \
 		--with-http_v2_module \
+		--with-http_v3_module \
+		--with-stream_quic_module \
+		--build=nginx-quic \
+		--with-openssl="$srcdir"/libressl \
+		\
 		--with-http_realip_module \
 		--with-http_addition_module \
 		--with-http_xslt_module=dynamic \
@@ -357,9 +369,6 @@ package() {
 	local name; for name in ngx_devel_kit nginx-rtmp-module; do
 		cp -r "$srcdir"/$name-*/doc* "$pkgdir"/usr/share/doc/$pkgname/$name
 	done
-	if $_has_luajit; then
-		cp -r "$srcdir"/lua-nginx-module-*/doc* "$pkgdir"/usr/share/doc/$pkgname/lua-nginx-module
-	fi
 
 	cd "$pkgdir"
 
@@ -458,17 +467,24 @@ getvar() {
 }
 
 sha512sums="
-1d468dcfa9bbd348b8a5dc514ac1428a789e73a92384c039b73a51ce376785f74bf942872c5594a9fcda6bbf44758bd727ce15ac2395f1aa989c507014647dcc  nginx-1.22.1.tar.gz
+4a5413c0ec251c02fb73dfb4d351045f857a36d45ebb7ae2c29f4a4f320a6543d0a049b147b08318de0b7b0406773c329dbf43bf98bb088f76e506ea532cd8ef  nginx-1.23.2.tar.gz
 0acd8bf9aedeabeef590909c83ad9057063b4d3165fe5e0b0ff2205df6e0d1b97f3fcfd27384a55b4816bbe975e93a737e58df9c6ee01baf7e46ceaabc43c64a  nginx-tests-29f4d48b5b31.tar.gz
 d76d654e1a73dbbbf5ad4ab6ae32bb43f5ea502e2468f9f0fe9485eb78c0ee6d550c4032e3a771ac5888d2ec7c387fd4a1fefb7eb47ba2e21afd4a294780df78  nginx-njs-0.7.7.tar.gz
 4c7a94aaebbb69599b0067e74f9f3db54ec383ca9499292fec5b875bb0b5859aa11dc14cef5664c94dd54aba231f31e85feacddc49f7622aa4d0fdb38709b6e1  nginx-dav-ext-module~pr-56.patch
 fdd66e433126e194a3ef22737993191a04fcc4c8caa044b27cb22bea0e7f16c8fdbc900553507d2bb541cdb82b542845a297db2a48c2460a38dd772d0ebfca9d  nginx-dav-ext-module~pr-62.patch
+2899636d730583c0eaa21e89d50ccb7a888e7f27fa194102909e42fb28cb8e239416978f55bed0a9115b65d0ac718cb7da8c1fa589eb79e9f66eea41dfc3458b  nginx-upload-progress-module~nginx_1.23.0.patch
+169373a1457519d8a844c2bca4fec0bb4e0387999a205b7cdb1f1ffd4ca5548c3ddc7de41eaa5842336a7c2a1876554e057f58ccfaf01978edcc9cd060d6bfdb  mod_zip~00-660ad95.patch
+2a361f825bf3ffde2769bacbb272ae121d506afa0bc069153546c0d061879a157baedf454b6cb752bfce654b8239a8fba17b817a15382c8a53a2156697effedc  mod_zip~01-bff10ba.patch
+27b075d08a644577f7efa7ceb97dc2db8f964c0e11c1193e5552fffc102c9c7810a2131a70ddb2cd3590be7a60035c76fd12f036046ce8d649569ab9ece8f2d1  mod_zip~02-51cf45d.patch
+4b38807502dcf9a5f2ed748cda3688c04c0abf0beecfad326fe346836f62ee9010bc74c4ad7a136d86b26eed073eb2a5393e7bf3bbcaefd7ad14f2c461577ead  mod_zip~03-555d3b3.patch
+35d98b6df1b16dc2a815025826e3adb39448b6d2821fb0d779c2af6ffa04b7badc5d8f90f7f8b24c92350e644b85a9fa930420db6267786bc7fd251f7d7df5f7  mod_zip~04-808fb55.patch
+316d09265f61564b3158d713e0e0bcd0254341288ed6527cbee33b211ec18aab6fd5254a1b31f98d288db703d8a8f272b4a610ac338df7f0688aae4a250718e0  mod_zip~05-5b2604b.patch
 09ec9f18323197eafa55ff68e8c836ad3dd830e6cd3bd4aeaf34e179ef3f72f734a0117288c1c58813aff59f3f1f0f29ccd772a672e17551e7a4fd0693a89c92  traffic-accounting-nginx-module~disable-stream-module.patch
 ac0f912ae90e0083cc761a622290223edeed0bd32213bbe766d637ac2dfd9835d163e5d16ef28740cbad05d6d92cc418d62df3413c70b4f2c63db02f8ca1c7cc  nginx_cookie_flag_module~fix-mem-allocations.patch
 4db527d663dbe9e8b503c3cbaa4eae34b45990a5359b3bb98ce970c705faefcac98de49439f2557756a2be8e2e06acc67f98942de01674c498832d80c3cb90c3  njs~mktemp-busybox-compat.patch
 df1d910d5a433ef8aa6620e46bd46cb82c45c840e35420bf81a76e5a868ac73ad88aa3934d1c11bcf004a88a9cd13bf69a96ee1b08540251b09903a30430b199  njs~nginx-1.20.x-compat.patch
 d4e16ef5dbd4f88b6dacdcff7cf2313a1d02a196000bc5c7bbc5b88ddfee686c0e24f926f779308589a4f3a7ad38d444c3435291296db889e6ea2dcae7d80e46  njs~fix-dangling-pointer.patch
-f6f44b8f17d079ef4db4fc0507672e7aaa6b93cbae10f24c91232f089a8b7a0c2db92a148b2a16b1992cdcdcad3b686146f9b8e955693a50982dd8aa04f54b2d  nginx.conf
+ea6ad54b9eb84fd557a2922560ae8f0dca458b09679e5aab2676e495fbf7580b42841460c094fd28ee2e98b667cee59ab3b04c7be0b0f330fb99b492c52147a7  nginx.conf
 0907f69dc2d3dc1bad3a04fb6673f741f1a8be964e22b306ef9ae2f8e736e1f5733a8884bfe54f3553fff5132a0e5336716250f54272c3fec2177d6ba16986f3  default.conf
 426f0c317322af7cab152f2070398c7aa5c059276ba504617a212f1e060bbb1dd9edc54e62d4cf5f14e3678235351c808ebeabe8b122757c74b3f505e8427106  stream.conf
 09b110693e3f4377349ccea3c43cb8199c8579ee351eae34283299be99fdf764b0c1bddd552e13e4d671b194501618b29c822e1ad53b34101a73a63954363dbb  nginx.logrotate
@@ -487,9 +503,6 @@ c208cdf3e245527d7b313f9ef1f5d36ca26e3bdafe67df56492a13b7726587538665e5d9fd50f295
 18dea21e5ae2647bea1fc448058a1b773c936917245edef8d861d5e23ed92e9a3b1ec4ef43ffb2ece7b5899d787910adcf4fbd39f84d7e8d7c54759e2fee5b72  ngx_http_geoip2_module-3.4.tar.gz
 2c0c140feeb29f0154a223dc3020ff956f894d63e0232a7bc0ca33fcb26f8b807bda868159ae30b6cac7456ec25b831c3d299ea18e234202ae5d14c1ff471a4b  headers-more-nginx-module-0.34.tar.gz
 015a358d987476bb61302fbbe1cb105f5314edc1a8b7ee6310aae697f755c79fcb1834ff561fced054c8cd5624f5387fcc1de729731ccd70662f2eb72bcdc174  nginx-log-zmq-1.0.0.tar.gz
-03e2504e8bc80efaf4af819ed9345285ca42ceecc647eda225e3be3b1e3617435f3949aa8034341955d8cce4826af9d1a8615b914109834f6b6b20e78be35ef9  lua-nginx-module-0.10.22.tar.gz
-72887c4490854b099cb26bb3f840073a36b0d812bde4486f04dc1be182ca74f0d1e3fd709e77c240c2dcf37665f74cf04e188ea9efe8e127c6789b27b487d0cd  lua-upstream-nginx-module-0.07.tar.gz
-d7aac69b5eceeb1b0db4741201159ade1e0e7f6f7c3e8c4afa2f8959c6c00c3b5285d5185747c2fb0b1400efda02e96799836315e7e492bb4a059b14acb2142d  naxsi-1.3.tar.gz
 f57d66d4f3025b3056d9558b00727a592b4d7b63b74b35925b871a2be7ac5fe97ee5a99eb34e13f490a21d77ec27c1cd74321359201f151f008ccf3519ebd9c1  nchan-1.3.4.tar.gz
 d6ca250db8de93edbd7875afca35e73cecdaf82132d1a7ee933cf94c6b8afa8e629e9e647a9321f2bc1fbb92137ec0d32dcd89b82ac5fae31e342537fb7e0431  redis2-nginx-module-0.15.tar.gz
 1ff4c947538a5bd5f9d6adcd87b37f2702f5cc90e3342bc08359cbe8f290b705a3a2daa3dedfb1df3ce4bc19478c8fcac07081c4a53a804fc2862d50078278dc  set-misc-nginx-module-0.33.tar.gz
