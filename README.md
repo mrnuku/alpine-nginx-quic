@@ -33,7 +33,7 @@ default vhost
 server {
     listen 443 http3 reuseport;
     listen [::]:443 http3 reuseport;
-	  listen [::]:443 ssl http2 default_server;
+    listen [::]:443 ssl http2 default_server;
     listen 443 ssl http2 default_server;
 }
 ```
