@@ -43,7 +43,7 @@ other vhost
 server {
     listen 443 http3;
     listen [::]:443 http3;
-    listen [::]:443 ssl http2 ipv6only=on; # managed by Certbot
+    listen [::]:443 ssl http2 ipv6only=on;
     listen 443 ssl http2;
 }
 ```
